@@ -18,7 +18,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
           </div>
           <div className="flex flex-col">
             <h1 className="text-lg font-bold tracking-tight leading-none text-zinc-900">
-              Visual Construct
+              Visual Style Analyzer
             </h1>
             <span className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase mt-0.5">視覺風格解析儀 v1.1</span>
           </div>
