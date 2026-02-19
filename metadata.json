@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Visual Construct (視覺風格解析儀) 0218",
+  "description": "An interactive tool that translates visual inputs into structured YAML design specifications using Gemini 3.",
+  "requestFramePermissions": []
+}
