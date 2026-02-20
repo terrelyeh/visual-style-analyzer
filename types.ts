@@ -30,3 +30,34 @@ export interface VisualAsset {
   url?: string;
   previewUrl: string;
 }
+
+export interface SlidePreview {
+  type: string;
+  label: string;
+  image: string | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
+export const SLIDE_TYPES = [
+  {
+    type: 'title',
+    label: '封面頁 (Title Slide)',
+    promptPrefix: 'Presentation title slide, hero visual, large bold heading, subtitle text, speaker info area, flat UI screenshot, no device frame, no realistic background',
+  },
+  {
+    type: 'divider',
+    label: '章節分隔頁 (Section Divider)',
+    promptPrefix: 'Section divider slide, bold color block, minimal centered text, dramatic whitespace, flat UI screenshot, no device frame, no realistic background',
+  },
+  {
+    type: 'content',
+    label: '標題 + 內文 (Content Layout)',
+    promptPrefix: 'Content slide with heading, body text paragraphs, bullet points, clean readable layout, flat UI screenshot, no device frame, no realistic background',
+  },
+  {
+    type: 'chart',
+    label: '數據圖表 (Data & Chart)',
+    promptPrefix: 'Data visualization slide, charts, graphs, statistics, KPI numbers, infographic layout, flat UI screenshot, no device frame, no realistic background',
+  },
+] as const;

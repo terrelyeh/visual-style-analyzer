@@ -1,0 +1,2023 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+api/
+  analyze.ts
+  generate-preview.ts
+  key-status.ts
+components/
+  ApiKeyModal.tsx
+  AssetUploader.tsx
+  Header.tsx
+  MediumSelector.tsx
+  ResultViewer.tsx
+contexts/
+  ApiKeyContext.tsx
+services/
+  gemini.ts
+.gitignore
+App.tsx
+constants.ts
+index.css
+index.html
+index.tsx
+metadata.json
+package.json
+postcss.config.js
+README.md
+tailwind.config.js
+tsconfig.json
+types.ts
+vercel.json
+vite.config.ts
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="api/analyze.ts">
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { GoogleGenAI } from '@google/genai';
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey.startsWith('PLACEHOLDER')) {
+        return res.status(503).json({ error: 'No server-side API key configured' });
+    }
+
+    const { parts, systemInstruction, medium } = req.body;
+
+    if (!parts || !systemInstruction) {
+        return res.status(400).json({ error: 'Missing required fields: parts, systemInstruction' });
+    }
+
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-preview-04-17',
+            contents: { parts },
+            config: {
+                systemInstruction,
+                temperature: 0.4,
+                responseMimeType: 'application/json',
+            },
+        });
+
+        const text = response.text;
+        if (!text) {
+            return res.status(500).json({ error: 'AI 回應為空' });
+        }
+
+        res.status(200).json({ text });
+    } catch (err: any) {
+        console.error('Gemini analyze error:', err);
+        let message = '分析失敗';
+        if (err.message?.includes('429')) message = '請求過於頻繁，請稍候再試';
+        if (err.message?.includes('API_KEY')) message = 'API Key 無效';
+        res.status(500).json({ error: message });
+    }
+}
+</file>
+
+<file path="api/generate-preview.ts">
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { GoogleGenAI } from '@google/genai';
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey.startsWith('PLACEHOLDER')) {
+        return res.status(503).json({ error: 'No server-side API key configured' });
+    }
+
+    const { prompt, aspectRatio } = req.body;
+
+    if (!prompt) {
+        return res.status(400).json({ error: 'Missing required field: prompt' });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    const extractImage = (response: any): string | null => {
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+        }
+        return null;
+    };
+
+    // Try Pro first, fallback to Flash
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-image-preview',
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                imageConfig: { aspectRatio, imageSize: '1K' },
+            },
+        });
+        const img = extractImage(response);
+        if (img) return res.status(200).json({ image: img });
+        throw new Error('No image in Pro response');
+    } catch {
+        try {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: { parts: [{ text: prompt }] },
+                config: {
+                    imageConfig: { aspectRatio },
+                },
+            });
+            const img = extractImage(response);
+            if (img) return res.status(200).json({ image: img });
+            throw new Error('No image in Flash response');
+        } catch (err: any) {
+            console.error('Image generation error:', err);
+            return res.status(500).json({ error: '圖片生成失敗：' + err.message });
+        }
+    }
+}
+</file>
+
+<file path="api/key-status.ts">
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+export default function handler(req: VercelRequest, res: VercelResponse) {
+    const hasServerKey = !!(
+        process.env.GEMINI_API_KEY &&
+        process.env.GEMINI_API_KEY.length > 0 &&
+        !process.env.GEMINI_API_KEY.startsWith('PLACEHOLDER')
+    );
+    res.status(200).json({ hasServerKey });
+}
+</file>
+
+<file path="components/ApiKeyModal.tsx">
+import React, { useState, useEffect } from 'react';
+import { useApiKey } from '../contexts/ApiKeyContext';
+import { X, Key, Check, ShieldCheck, AlertCircle } from 'lucide-react';
+
+interface ApiKeyModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    forceOpen?: boolean;
+}
+
+export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, forceOpen }) => {
+    const { apiKey, setApiKey, removeApiKey, isUsingServerKey } = useApiKey();
+    const [inputValue, setInputValue] = useState('');
+    const [isVisible, setIsVisible] = useState(false);
+
+    useEffect(() => {
+        if (apiKey && !isUsingServerKey) {
+            setInputValue(apiKey);
+        }
+    }, [apiKey, isUsingServerKey]);
+
+    if (!isOpen && !forceOpen) return null;
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (inputValue.trim()) {
+            setApiKey(inputValue.trim());
+            if (!forceOpen) onClose();
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm transition-opacity">
+            <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-zinc-100 overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-200">
+
+                <div className="px-8 py-5 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                    <h3 className="font-bold text-zinc-900 text-lg">
+                        {isUsingServerKey ? '系統金鑰設定' : 'API 金鑰配置'}
+                    </h3>
+                    {!forceOpen && (
+                        <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 p-2 rounded-lg transition-colors">
+                            <X size={20} />
+                        </button>
+                    )}
+                </div>
+
+                <div className="p-8">
+                    {isUsingServerKey ? (
+                        // Scenario: Host Key Active
+                        <div className="flex flex-col items-center text-center space-y-4">
+                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-2">
+                                <ShieldCheck size={32} />
+                            </div>
+                            <h4 className="text-xl font-bold text-zinc-900">系統金鑰已啟用</h4>
+                            <p className="text-zinc-500 leading-relaxed">
+                                本站已配置全域 API Key，您可以直接免費使用所有功能，無需額外設定。
+                            </p>
+                            <div className="w-full mt-6 pt-6 border-t border-zinc-100">
+                                <button
+                                    onClick={onClose}
+                                    className="w-full bg-zinc-900 text-white py-3 rounded-xl font-bold hover:bg-zinc-800 transition-colors"
+                                >
+                                    開始使用
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        // Scenario: BYOK (User Key Required)
+                        <>
+                            <div className="flex items-start gap-4 mb-8">
+                                <div className={`p-3 rounded-full shrink-0 ${forceOpen ? 'bg-amber-100 text-amber-600' : 'bg-sky-50 text-sky-600'}`}>
+                                    {forceOpen ? <AlertCircle size={28} /> : <Key size={28} />}
+                                </div>
+                                <div>
+                                    <h4 className="text-base font-bold text-zinc-900 mb-1">
+                                        {forceOpen ? '需要啟動金鑰 (Action Required)' : '設定您的 API Key'}
+                                    </h4>
+                                    <p className="text-sm text-zinc-500 font-medium leading-relaxed">
+                                        {forceOpen
+                                            ? '本站未設定全域額度。請輸入您個人的 Google Gemini API Key 以啟用分析功能。您的金鑰僅會儲存在瀏覽器端。'
+                                            : '您可以隨時更新或移除儲存在瀏覽器端的個人 API Key。'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleSubmit} className="space-y-6">
+                                <div>
+                                    <label className="text-sm font-bold text-zinc-700 block mb-2 ml-1">
+                                        Google Gemini API Key
+                                    </label>
+                                    <div className="relative">
+                                        <Key className="absolute left-4 top-3.5 text-zinc-400" size={18} />
+                                        <input
+                                            type={isVisible ? "text" : "password"}
+                                            value={inputValue}
+                                            onChange={(e) => setInputValue(e.target.value)}
+                                            placeholder="AIzaSy..."
+                                            autoFocus={forceOpen}
+                                            className="w-full pl-11 pr-16 py-3 bg-white border border-zinc-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-400 transition-all placeholder:text-zinc-300 text-zinc-900 font-mono"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsVisible(!isVisible)}
+                                            className="absolute right-4 top-3.5 text-xs font-bold text-zinc-400 hover:text-zinc-600 uppercase tracking-wide"
+                                        >
+                                            {isVisible ? '隱藏' : '顯示'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4 pt-2">
+                                    <button
+                                        type="submit"
+                                        disabled={!inputValue.trim()}
+                                        className="flex-1 bg-sky-600 text-white py-3.5 rounded-xl text-base font-bold hover:bg-sky-700 active:scale-[0.98] transition-all shadow-lg shadow-sky-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {forceOpen ? '儲存並啟用' : '更新金鑰'}
+                                    </button>
+
+                                    {!forceOpen && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { removeApiKey(); setInputValue(''); onClose(); }}
+                                            className="px-6 py-3.5 bg-white border border-zinc-200 text-zinc-600 rounded-xl text-base font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-colors"
+                                        >
+                                            移除
+                                        </button>
+                                    )}
+                                </div>
+                            </form>
+
+                            <div className="mt-8 pt-5 border-t border-zinc-100 text-center">
+                                <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-sm text-sky-600 hover:text-sky-800 font-semibold inline-flex items-center gap-1.5 hover:underline">
+                                    前往 Google AI Studio 獲取免費 Key
+                                </a>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+</file>
+
+<file path="components/AssetUploader.tsx">
+import React, { useRef } from 'react';
+import { VisualAsset } from '../types';
+import { Upload, X, Plus } from 'lucide-react';
+
+interface AssetUploaderProps {
+  assets: VisualAsset[];
+  onAssetsChange: (assets: VisualAsset[]) => void;
+  onReset: () => void;
+}
+
+export const AssetUploader: React.FC<AssetUploaderProps> = ({ assets, onAssetsChange, onReset }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const generateId = () => Math.random().toString(36).substr(2, 9);
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    const newAssets: VisualAsset[] = Array.from(files).map(file => ({
+      id: generateId(),
+      type: 'file',
+      file,
+      previewUrl: URL.createObjectURL(file)
+    }));
+    onAssetsChange([...assets, ...newAssets]);
+  };
+
+  const removeAsset = (id: string) => {
+    onAssetsChange(assets.filter(a => a.id !== id));
+  };
+
+  const handleInternalReset = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    onReset();
+  };
+
+  return (
+    <div className="w-full space-y-5">
+      <div className="flex items-center justify-between pb-1">
+        <label className="text-sm font-bold text-zinc-700 flex items-center gap-2.5">
+          上傳參考素材 (Assets)
+          <span className={`text-xs px-2.5 py-0.5 rounded-md font-bold transition-colors ${assets.length > 0 ? 'bg-sky-100 text-sky-800' : 'bg-zinc-100 text-zinc-500'}`}>
+            {assets.length}
+          </span>
+        </label>
+        
+        {assets.length > 0 && (
+          <button
+            onClick={handleInternalReset}
+            className="text-sm font-bold text-zinc-400 hover:text-red-500 transition-colors uppercase tracking-wide text-[10px]"
+          >
+            清除全部
+          </button>
+        )}
+      </div>
+      
+      {/* Grid View */}
+      {assets.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+          {assets.map((asset) => (
+            <div key={asset.id} className="relative aspect-square group rounded-xl overflow-hidden border-2 border-zinc-200 shadow-sm bg-white hover:border-sky-400 transition-colors">
+                <img src={asset.previewUrl} alt="asset" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <div className="absolute inset-0 bg-sky-900/0 group-hover:bg-sky-900/10 transition-colors" />
+                <button 
+                onClick={() => removeAsset(asset.id)}
+                className="absolute top-1.5 right-1.5 bg-white text-zinc-500 hover:text-red-600 p-1.5 rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 border border-zinc-200"
+                >
+                  <X size={14} />
+                </button>
+            </div>
+          ))}
+          
+          {/* Add More Button */}
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="aspect-square border-2 border-dashed border-zinc-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-sky-50 hover:border-sky-400 hover:text-sky-600 transition-all text-zinc-400"
+          >
+              <Plus size={24} />
+          </button>
+        </div>
+      )}
+
+      {/* Empty State / Dropzone */}
+      {assets.length === 0 && (
+        <div 
+          className="relative group cursor-pointer border-2 border-dashed border-zinc-300 rounded-xl bg-zinc-50/50 p-10 flex flex-col items-center justify-center text-center hover:bg-sky-50/30 hover:border-sky-400 hover:shadow-md transition-all duration-300"
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            handleFiles(e.dataTransfer.files);
+          }}
+        >
+            <div className="w-14 h-14 rounded-2xl bg-white border border-zinc-200 shadow-sm flex items-center justify-center mb-4 text-zinc-400 group-hover:text-sky-600 group-hover:scale-110 group-hover:border-sky-200 transition-all">
+              <Upload size={24} strokeWidth={1.5} />
+            </div>
+            <p className="text-base font-bold text-zinc-700 group-hover:text-sky-900 transition-colors">
+              點擊或拖曳圖片至此
+            </p>
+            <p className="text-xs text-zinc-400 mt-2 font-bold uppercase tracking-wider">
+              支援 JPG, PNG (Max 10MB)
+            </p>
+        </div>
+      )}
+      
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={(e) => handleFiles(e.target.files)} 
+        accept="image/*" 
+        multiple
+        className="hidden" 
+      />
+    </div>
+  );
+};
+</file>
+
+<file path="components/Header.tsx">
+import React from 'react';
+import { useApiKey } from '../contexts/ApiKeyContext';
+import { Settings, Key, Command, ShieldCheck, User } from 'lucide-react';
+
+interface HeaderProps {
+  onOpenSettings?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
+  const { isConfigured, isUsingServerKey } = useApiKey();
+
+  return (
+    <header className="sticky top-0 z-50 w-full bg-white border-b border-zinc-200 shadow-sm">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-3 text-zinc-900">
+          <div className="p-2 rounded-lg bg-slate-900 text-sky-400 shadow-sm">
+            <Command size={20} strokeWidth={3} />
+          </div>
+          <div className="flex flex-col">
+            <h1 className="text-lg font-bold tracking-tight leading-none text-zinc-900">
+              Visual Construct
+            </h1>
+            <span className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase mt-0.5">視覺風格解析儀 v1.1</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenSettings}
+            className={`
+               flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-lg transition-all border
+               ${isConfigured
+                ? isUsingServerKey
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 cursor-default'
+                  : 'bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-white hover:text-zinc-900 hover:border-zinc-300 shadow-sm'
+                : 'bg-sky-50 border-sky-100 text-sky-700 hover:bg-sky-100'}
+             `}
+          >
+            {isUsingServerKey ? <ShieldCheck size={14} /> : (isConfigured ? <User size={14} /> : <Key size={14} />)}
+            <span>
+              {isUsingServerKey
+                ? '系統金鑰已啟用'
+                : (isConfigured ? '使用個人金鑰' : '尚未設定 API Key')}
+            </span>
+            {(!isUsingServerKey || !isConfigured) && <Settings size={14} className="ml-1 opacity-50" />}
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+};
+</file>
+
+<file path="components/MediumSelector.tsx">
+import React, { useState, useEffect } from 'react';
+import { TargetMedium } from '../types';
+import { MEDIUM_DESCRIPTIONS, MEDIUM_BEST_PRACTICES } from '../constants';
+import { Info, Layout, Layers, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
+
+interface MediumSelectorProps {
+  selectedMedium: TargetMedium;
+  onSelect: (medium: TargetMedium) => void;
+}
+
+const MEDIUM_ICONS: Record<TargetMedium, React.ReactNode> = {
+    [TargetMedium.SLIDES]: <Layers size={20} />,
+    [TargetMedium.SAAS]: <Layout size={20} />,
+    [TargetMedium.POSTER]: <ImageIcon size={20} />
+};
+
+export const MediumSelector: React.FC<MediumSelectorProps> = ({ selectedMedium, onSelect }) => {
+  const [activeInfo, setActiveInfo] = useState<TargetMedium | null>(null);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActiveInfo(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  const toggleInfo = (e: React.MouseEvent, medium: TargetMedium) => {
+    e.stopPropagation();
+    setActiveInfo(activeInfo === medium ? null : medium);
+  };
+
+  return (
+    <div className="w-full relative mt-6">
+      <div className="flex items-center gap-2 mb-4">
+        <label className="text-sm font-bold text-zinc-700">
+          選擇目標載體 (Target Medium)
+        </label>
+      </div>
+
+      {activeInfo && (
+        <div 
+          className="fixed inset-0 z-30 bg-transparent"
+          onClick={() => setActiveInfo(null)}
+        />
+      )}
+      
+      <div className="flex flex-col gap-3">
+        {Object.values(TargetMedium).map((medium) => (
+          <div key={medium} className="relative group">
+            <button
+              onClick={() => onSelect(medium)}
+              className={`
+                w-full relative p-4 text-left border-2 rounded-xl transition-all duration-200 flex items-center gap-4
+                ${selectedMedium === medium 
+                  ? 'bg-sky-50/50 border-sky-500 shadow-md shadow-sky-100/50 z-10' 
+                  : 'bg-white border-zinc-200 hover:border-zinc-300 hover:shadow-sm text-zinc-500'}
+              `}
+            >
+              <div className={`
+                p-2.5 rounded-lg transition-colors
+                ${selectedMedium === medium ? 'bg-sky-100 text-sky-700' : 'bg-zinc-100 text-zinc-400 group-hover:bg-zinc-200 group-hover:text-zinc-600'}
+              `}>
+                {MEDIUM_ICONS[medium]}
+              </div>
+
+              <div className="flex-1">
+                 <div className="flex items-center justify-between">
+                    <h3 className={`text-base font-bold ${selectedMedium === medium ? 'text-zinc-900' : 'text-zinc-700'}`}>
+                        {medium === TargetMedium.SLIDES ? "簡報提案 (Slides)" : 
+                         medium === TargetMedium.SAAS ? "網頁應用 (SaaS UI)" : "主視覺海報 (Poster Art)"}
+                    </h3>
+                    {selectedMedium === medium && <CheckCircle2 size={18} className="text-sky-600 fill-white" />}
+                 </div>
+                 <p className={`text-sm mt-1 font-medium ${selectedMedium === medium ? 'text-sky-900/70' : 'text-zinc-400'}`}>
+                    {MEDIUM_DESCRIPTIONS[medium]}
+                 </p>
+              </div>
+            </button>
+
+            {/* Info Button */}
+            <button
+              onClick={(e) => toggleInfo(e, medium)}
+              className={`
+                absolute top-4 right-12 p-1.5 rounded-md hover:bg-zinc-100 text-zinc-300 hover:text-zinc-600 transition-colors z-20
+                ${activeInfo === medium ? 'bg-zinc-100 text-zinc-600' : ''}
+              `}
+            >
+              <Info size={16} />
+            </button>
+
+            {/* Notion-style Popover */}
+            {activeInfo === medium && (
+              <div className="absolute left-0 right-0 top-full mt-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                 <div className="bg-white border border-zinc-200 shadow-2xl shadow-zinc-900/10 rounded-xl p-5 relative text-zinc-800 ring-1 ring-zinc-900/5">
+                    <div className="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-100">
+                      <span className="bg-zinc-100 text-zinc-600 text-xs font-bold px-2.5 py-1 rounded-md border border-zinc-200">GUIDE</span>
+                      <h4 className="font-bold text-base text-zinc-900">{MEDIUM_BEST_PRACTICES[medium].title}</h4>
+                    </div>
+
+                    <div className="space-y-4">
+                       <div className="flex items-start gap-2.5 text-sm font-medium text-zinc-700">
+                          <span className="text-sky-500 text-lg leading-none">★</span>
+                          <span>{MEDIUM_BEST_PRACTICES[medium].goldenRatio}</span>
+                       </div>
+                       
+                       <div className="bg-zinc-50 rounded-lg p-4 text-sm border border-zinc-100">
+                          <p className="font-bold text-zinc-500 mb-2 uppercase text-xs tracking-wider">配方 (Recipe)</p>
+                          <ul className="space-y-2 pl-4 list-disc text-zinc-600 marker:text-zinc-300">
+                            {MEDIUM_BEST_PRACTICES[medium].recipe.map((item, idx) => (
+                              <li key={idx}>{item}</li>
+                            ))}
+                          </ul>
+                       </div>
+                       
+                       <div className="text-sm bg-red-50 text-red-800 p-3 rounded-lg border border-red-100 flex gap-2">
+                          <span className="font-bold">注意:</span>
+                          <span className="opacity-90">{MEDIUM_BEST_PRACTICES[medium].donts}</span>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+</file>
+
+<file path="components/ResultViewer.tsx">
+import React, { useState, useEffect } from 'react';
+import { AnalysisState, TargetMedium } from '../types';
+import { generateVisualPreview } from '../services/gemini';
+import { useApiKey } from '../contexts/ApiKeyContext';
+import { Copy, Check, Image as ImageIcon, Code, Palette, Zap, Download, ZoomIn, Loader2, AlertTriangle, X, Files, RefreshCw } from 'lucide-react';
+
+interface ResultViewerProps {
+  state: AnalysisState;
+  medium: TargetMedium;
+  onReAnalyze: () => void;
+}
+
+export const ResultViewer: React.FC<ResultViewerProps> = ({ state, medium, onReAnalyze }) => {
+  const { apiKey } = useApiKey();
+  const [copiedSection, setCopiedSection] = useState<string | null>(null);
+  
+  // Image Generation
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
+  const result = state.result;
+  const summary = result?.summary;
+  const yaml = result?.yaml;
+  const isStale = result && result.source_medium !== medium;
+
+  // 1. Prompt for Slides (NotebookLM / Outline)
+  const slideInstruction = `Role: Design Consultant & Content Strategist
+Task: Analyze the attached 'design_specification' YAML and the user's content to create a structured presentation outline.
+
+[Rules]
+1. Logic: Apply the 'layout_mapping_logic' from the YAML.
+2. Mood: "${summary?.style_description || ''}".
+3. Density: Keep text density low (One concept per slide).
+4. Output: detailed slide-by-slide breakdown.`;
+
+  // 2. Prompt for Web App (Frontend Code)
+  const saasInstruction = `Role: Senior Frontend Engineer
+Task: Build a high-fidelity UI based strictly on the attached Design Specification.
+
+[Requirements]
+1. Framework: React + Tailwind CSS + Lucide React.
+2. Tokens: Strictly adhere to 'color_system' and 'typography' in YAML.
+3. Mood: "${summary?.style_description || ''}".
+4. Layout: Implement the 'app_shell' structure defined in the spec.`;
+
+  // 3. Prompt for Poster (Midjourney / Graphic Design)
+  const posterInstruction = `Role: AI Art Director & Prompt Engineer
+Task: Deconstruct the attached 'design_specification' to create a high-fidelity Generative AI prompt (for Midjourney v6 or DALL-E 3).
+
+[Requirements]
+1. Composition: Describe the visual hierarchy based on 'layout_system'.
+2. Style: Incorporate keywords: ${summary?.mood_keywords.join(', ') || ''}.
+3. Colors: Use the 'color_system' palette.
+4. Output Format: Provide a raw prompt string: "/imagine prompt: [Subject] + [Art Style] + [Lighting/Color] + [Parameters]"`;
+
+  // Dynamic Selection
+  const getActiveInstruction = () => {
+    switch (medium) {
+      case TargetMedium.SLIDES: return slideInstruction;
+      case TargetMedium.SAAS: return saasInstruction;
+      case TargetMedium.POSTER: return posterInstruction;
+      default: return saasInstruction;
+    }
+  };
+
+  const activeInstruction = getActiveInstruction();
+  const fullBundle = `${activeInstruction}\n\n[Attached Design Specification]\n${yaml || ''}`;
+
+  const getPromptLabel = () => {
+    switch (medium) {
+      case TargetMedium.SLIDES: return "NotebookLM 指令";
+      case TargetMedium.SAAS: return "Frontend Developer 指令";
+      case TargetMedium.POSTER: return "AI Art Director 指令";
+      default: return "AI 指令";
+    }
+  };
+
+  useEffect(() => {
+    setGeneratedImageUrl(null);
+    setImageError(null);
+    setIsGeneratingImage(false);
+  }, [state.result, medium]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsLightboxOpen(false);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedSection(id);
+    setTimeout(() => setCopiedSection(null), 2000);
+  };
+
+  const handleGeneratePreview = async () => {
+    if (!state.result?.image_generation_prompt) return;
+    setIsGeneratingImage(true);
+    setGeneratedImageUrl(null);
+    setImageError(null);
+
+    try {
+      const imageUrl = await generateVisualPreview(state.result.image_generation_prompt, medium, apiKey);
+      setGeneratedImageUrl(imageUrl);
+    } catch (error: any) {
+      setImageError(error.message || "Failed to generate image.");
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  if (state.isLoading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-12 text-zinc-400 min-h-[500px] border-2 border-dashed border-zinc-200 rounded-2xl bg-white/50 animate-in fade-in duration-300">
+        <div className="bg-white p-6 rounded-2xl shadow-xl shadow-sky-100/50 mb-8 border border-zinc-100 relative">
+             <div className="absolute inset-0 rounded-2xl border-t-2 border-sky-600 animate-spin"></div>
+             <Loader2 className="w-10 h-10 text-sky-600" />
+        </div>
+        <p className="font-bold text-xl text-zinc-900">正在解析視覺風格</p>
+        <p className="text-base mt-3 text-zinc-500 font-medium">提取配色、結構與設計規範中...</p>
+      </div>
+    );
+  }
+
+  if (state.error) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="max-w-md w-full p-8 bg-red-50 border border-red-100 rounded-2xl text-center shadow-sm">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+          </div>
+          <h3 className="text-xl font-bold text-red-900 mb-3">分析失敗</h3>
+          <p className="text-base text-red-700/80 leading-relaxed">{state.error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!state.result) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-zinc-400 p-12 border-2 border-dashed border-zinc-300 rounded-3xl bg-zinc-50/50 min-h-[400px]">
+        <div className="w-16 h-16 bg-white border border-zinc-200 rounded-2xl shadow-sm flex items-center justify-center mb-6">
+           <Zap className="w-8 h-8 text-zinc-300" />
+        </div>
+        <p className="font-bold text-lg text-zinc-500">準備就緒</p>
+        <p className="text-base mt-2 font-medium">上傳圖片以生成您的設計規範</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col space-y-8 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
+      
+      {/* Stale Data Overlay */}
+      {isStale && (
+        <div className="absolute inset-0 z-50 bg-white/60 backdrop-blur-sm rounded-3xl border-2 border-sky-100 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+           <div className="max-w-md p-8 bg-white shadow-2xl shadow-sky-900/10 rounded-2xl border border-zinc-100">
+             <div className="w-14 h-14 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center mx-auto mb-5">
+               <RefreshCw size={24} className="animate-pulse" />
+             </div>
+             <h3 className="text-xl font-bold text-zinc-900 mb-2">請更新設計規範</h3>
+             <p className="text-zinc-500 mb-6 text-sm font-medium leading-relaxed">
+               您將載體切換為 <span className="font-bold text-zinc-800">{medium === TargetMedium.SLIDES ? '簡報' : medium === TargetMedium.SAAS ? 'Web App' : '海報'}</span>，
+               但目前的報告是針對 <span className="font-bold text-zinc-800 line-through decoration-red-400 decoration-2">{result.source_medium === TargetMedium.SLIDES ? '簡報' : result.source_medium === TargetMedium.SAAS ? 'Web App' : '海報'}</span> 生成的。
+               請重新分析以獲取正確的結構。
+             </p>
+             <button 
+               onClick={onReAnalyze}
+               className="w-full py-3.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-lg shadow-sky-200 hover:shadow-sky-300 transition-all flex items-center justify-center gap-2"
+             >
+               <RefreshCw size={18} />
+               <span>重新分析風格 (Re-Analyze)</span>
+             </button>
+           </div>
+        </div>
+      )}
+
+      {/* 1. Summary Card */}
+      <div className={`bg-white border-2 border-zinc-200 rounded-2xl shadow-lg shadow-zinc-200/50 p-8 relative overflow-hidden group ${isStale ? 'blur-[2px] opacity-50 pointer-events-none' : ''}`}>
+        <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-slate-500 to-sky-500"></div>
+        <div className="flex items-center gap-3 mb-6">
+           <div className="p-2 bg-slate-100 text-slate-600 rounded-lg border border-slate-200">
+                <Palette className="w-5 h-5" />
+           </div>
+           <h2 className="text-lg font-bold text-zinc-900">視覺風格基因 (Visual DNA)</h2>
+        </div>
+        
+        <p className="text-zinc-800 text-xl leading-relaxed mb-8 font-medium">
+           {summary?.style_description}
+        </p>
+
+        <div className="space-y-8">
+           {/* Colors */}
+           <div>
+             <span className="text-xs font-bold text-zinc-400 mb-4 block uppercase tracking-wider">核心色票 (點擊複製)</span>
+             <div className="flex flex-wrap gap-4">
+               {summary?.primary_colors.map((color, idx) => (
+                 <div key={idx} className="group/color relative">
+                   <button
+                     onClick={() => copyToClipboard(color, `color-${idx}`)}
+                     className="w-14 h-14 rounded-2xl border-2 border-zinc-100 shadow-sm transition-transform hover:scale-110 focus:outline-none ring-2 ring-transparent hover:ring-zinc-300 hover:shadow-md cursor-pointer"
+                     style={{ backgroundColor: color }}
+                   />
+                   <div className="absolute left-1/2 -translate-x-1/2 mt-2 opacity-0 group-hover/color:opacity-100 transition-opacity bg-zinc-900 text-white text-xs py-1 px-2 rounded font-mono font-medium shadow-lg pointer-events-none z-10">
+                     {color}
+                   </div>
+                 </div>
+               ))}
+             </div>
+           </div>
+
+           {/* Keywords */}
+           <div>
+             <span className="text-xs font-bold text-zinc-400 mb-4 block uppercase tracking-wider">風格關鍵字 (點擊複製)</span>
+             <div className="flex flex-wrap gap-3">
+               {summary?.mood_keywords.map((keyword, idx) => (
+                 <button 
+                    key={idx} 
+                    onClick={() => copyToClipboard(keyword, `keyword-${idx}`)}
+                    className="relative group/keyword px-4 py-2 text-sm font-semibold bg-zinc-50 text-zinc-700 rounded-lg border border-zinc-200 shadow-sm hover:bg-sky-50 hover:text-sky-700 hover:border-sky-200 transition-all active:scale-95 cursor-pointer"
+                 >
+                   {keyword}
+                   {copiedSection === `keyword-${idx}` && (
+                      <span className="absolute -top-9 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-xs py-1 px-2 rounded shadow-lg animate-in fade-in zoom-in duration-200 whitespace-nowrap z-20">
+                        Copied!
+                      </span>
+                   )}
+                 </button>
+               ))}
+             </div>
+           </div>
+        </div>
+      </div>
+
+      {/* 2. Action Bridge */}
+      <div className={`bg-white border-2 border-zinc-200 rounded-2xl shadow-lg shadow-zinc-200/50 overflow-hidden group ${isStale ? 'blur-[2px] opacity-50 pointer-events-none' : ''}`}>
+         <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-zinc-500 to-zinc-700"></div>
+         
+         <div className="px-6 py-5 border-b border-zinc-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-50/50">
+            <div className="flex items-center gap-3">
+               <div className="p-1.5 bg-zinc-200 text-zinc-700 rounded-lg">
+                  <Code className="w-4 h-4" />
+               </div>
+               <div className="flex flex-col">
+                  <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-wide">
+                     {getPromptLabel()}
+                  </h3>
+                  <span className="text-[10px] text-zinc-400 font-bold">搭配下方 Spec 一起使用</span>
+               </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+               {/* Primary Combined Copy Button */}
+               <button
+                  onClick={() => copyToClipboard(fullBundle, 'full_bundle')}
+                  className="text-xs flex items-center gap-2 bg-zinc-900 text-white hover:bg-zinc-800 font-bold transition-all px-4 py-2 rounded-lg shadow-sm hover:shadow active:scale-95"
+               >
+                  {copiedSection === 'full_bundle' ? <Check size={16} /> : <Files size={16} />}
+                  {copiedSection === 'full_bundle' ? '已複製完整內容' : '複製完整指令 (含 Spec)'}
+               </button>
+
+               {/* Secondary Single Copy Button */}
+               <button
+                  onClick={() => copyToClipboard(activeInstruction, 'bridge')}
+                  className="text-xs flex items-center gap-2 text-zinc-500 hover:text-zinc-900 font-bold transition-colors px-3 py-2 hover:bg-zinc-200 rounded-lg border border-transparent hover:border-zinc-300"
+                  title="僅複製 Prompt 指令"
+               >
+                  {copiedSection === 'bridge' ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+               </button>
+            </div>
+         </div>
+         
+         <div className="p-6 bg-white">
+            <div className="text-zinc-600 text-sm font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-[240px] overflow-y-auto bg-zinc-50 p-5 rounded-xl border border-zinc-200/80">
+                {activeInstruction}
+            </div>
+         </div>
+      </div>
+
+      {/* 3. YAML Spec */}
+      <div className={`bg-white border-2 border-zinc-200 rounded-2xl shadow-lg shadow-zinc-200/50 overflow-hidden flex flex-col group ${isStale ? 'blur-[2px] opacity-50 pointer-events-none' : ''}`}>
+          <div className="px-6 py-5 border-b border-zinc-200 flex justify-between items-center bg-zinc-50/50">
+            <div className="flex items-center gap-3">
+               <span className="font-bold text-[10px] bg-zinc-800 text-white px-2 py-1 rounded shadow-sm">YAML</span>
+               <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-wide">設計規格 (Design Spec)</h3>
+            </div>
+            <button
+               onClick={() => copyToClipboard(yaml || '', 'yaml')}
+               className="text-xs flex items-center gap-2 text-zinc-500 hover:text-zinc-900 font-bold transition-colors px-3 py-1.5 hover:bg-zinc-200 rounded-lg border border-transparent hover:border-zinc-300"
+            >
+               {copiedSection === 'yaml' ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+               {copiedSection === 'yaml' ? '已複製' : '複製 YAML'}
+            </button>
+          </div>
+          <div className="bg-[#1c1c1e] overflow-hidden">
+             <pre className="p-6 text-sm text-[#d4d4d8] font-mono leading-loose overflow-x-auto custom-scrollbar max-h-[500px]">
+              {yaml}
+            </pre>
+          </div>
+      </div>
+
+      {/* 4. Visual Lab */}
+      <div className={`bg-white border-2 border-zinc-200 rounded-2xl shadow-lg shadow-zinc-200/50 p-8 relative overflow-hidden group ${isStale ? 'blur-[2px] opacity-50 pointer-events-none' : ''}`}>
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-sky-500 to-blue-600"></div>
+          <div className="flex items-center justify-between mb-8">
+             <div className="flex items-center gap-3">
+                <div className="p-2 bg-sky-50 text-sky-600 rounded-lg border border-sky-100">
+                    <ImageIcon className="w-5 h-5" />
+                </div>
+                <h2 className="text-lg font-bold text-zinc-900">視覺模擬預覽 (Simulation)</h2>
+             </div>
+             <span className="text-xs bg-zinc-100 text-zinc-500 px-3 py-1 rounded-full font-bold uppercase tracking-wide border border-zinc-200">實驗性功能</span>
+          </div>
+          
+          <div className="flex flex-col gap-8">
+             {/* Prompt & Controls Area */}
+             <div className="flex flex-col gap-5">
+               <div className="bg-sky-50/30 border border-sky-100/80 rounded-xl p-6">
+                 <span className="text-xs text-sky-700/70 font-bold uppercase tracking-wider mb-3 block">生成提示詞 (Simulated Prompt)</span>
+                 <p className="text-sm text-zinc-700 leading-relaxed font-mono font-medium">
+                   {state.result.image_generation_prompt}
+                 </p>
+               </div>
+               
+               <button
+                  onClick={handleGeneratePreview}
+                  disabled={isGeneratingImage}
+                  className={`
+                    w-full py-4 px-6 font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-3
+                    ${isGeneratingImage 
+                      ? 'bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed' 
+                      : 'bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-300 transform active:scale-[0.98]'}
+                  `}
+                >
+                  {isGeneratingImage ? <Loader2 className="animate-spin w-5 h-5" /> : <Zap className="w-5 h-5 text-sky-400 fill-sky-400" />}
+                  {isGeneratingImage ? '正在繪製預覽圖...' : '生成 AI 預覽圖'}
+                </button>
+             </div>
+
+             {/* Image Preview Area */}
+             <div className={`
+               relative rounded-xl overflow-hidden border-2 border-zinc-200 bg-zinc-100 flex items-center justify-center shadow-inner w-full
+               ${medium === TargetMedium.SLIDES ? 'aspect-video' : 'aspect-[3/4] md:aspect-video lg:aspect-[16/9]'}
+             `}>
+                {!generatedImageUrl && !isGeneratingImage && (
+                   <div className="text-center text-zinc-400">
+                      <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                      <span className="text-sm font-semibold">預覽區域</span>
+                   </div>
+                )}
+                
+                {isGeneratingImage && (
+                   <div className="text-center">
+                     <Loader2 className="w-10 h-10 text-zinc-400 animate-spin mx-auto mb-3" />
+                     <span className="text-sm text-zinc-500 font-semibold">AI 算圖中...</span>
+                   </div>
+                )}
+                
+                {imageError && (
+                   <div className="p-8 text-center text-red-500 text-sm bg-red-50 w-full h-full flex flex-col items-center justify-center">
+                     <AlertTriangle className="w-8 h-8 mb-3 opacity-50" />
+                     {imageError}
+                   </div>
+                )}
+
+                {generatedImageUrl && (
+                   <div className="absolute inset-0 group">
+                      <img src={generatedImageUrl} className="w-full h-full object-contain bg-zinc-900/5" alt="Generated" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 backdrop-blur-[2px]">
+                         <button 
+                           onClick={() => setIsLightboxOpen(true)}
+                           className="p-3 bg-white text-zinc-900 rounded-full shadow-lg hover:scale-110 transition-transform"
+                         >
+                           <ZoomIn size={20} />
+                         </button>
+                         <a 
+                           href={generatedImageUrl} 
+                           download="visual-spec.png"
+                           className="p-3 bg-white text-zinc-900 rounded-full shadow-lg hover:scale-110 transition-transform"
+                           onClick={(e) => e.stopPropagation()}
+                         >
+                           <Download size={20} />
+                         </a>
+                      </div>
+                   </div>
+                )}
+             </div>
+          </div>
+      </div>
+
+      {/* Lightbox */}
+      {isLightboxOpen && generatedImageUrl && (
+        <div 
+          className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-md flex items-center justify-center p-8"
+          onClick={() => setIsLightboxOpen(false)}
+        >
+           <img 
+             src={generatedImageUrl} 
+             className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl ring-1 ring-black/5" 
+             onClick={(e) => e.stopPropagation()}
+           />
+           <button 
+             className="absolute top-8 right-8 p-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-full transition-colors"
+             onClick={() => setIsLightboxOpen(false)}
+           >
+             <X size={24} /> 
+           </button>
+        </div>
+      )}
+    </div>
+  );
+};
+</file>
+
+<file path="contexts/ApiKeyContext.tsx">
+import React, { createContext, useContext, useState, useEffect } from 'react';
+
+interface ApiKeyContextType {
+  apiKey: string | null;
+  setApiKey: (key: string) => void;
+  removeApiKey: () => void;
+  isUsingServerKey: boolean; // True if Vercel backend has a key (user doesn't need to provide one)
+  isConfigured: boolean;     // True if we have a usable key (server or user-provided)
+  isLoading: boolean;        // True while checking server key status
+}
+
+const ApiKeyContext = createContext<ApiKeyContextType | undefined>(undefined);
+
+export const ApiKeyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [apiKey, setApiKeyState] = useState<string | null>(null);
+  const [isUsingServerKey, setIsUsingServerKey] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const init = async () => {
+      // 1. Check if backend has a key
+      try {
+        const res = await fetch('/api/key-status');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.hasServerKey) {
+            // Backend has the key — frontend doesn't need one
+            setIsUsingServerKey(true);
+            setApiKeyState('__server__'); // Sentinel value: signals "use proxy"
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch {
+        // Local dev or fetch failed — fall through to BYOK
+      }
+
+      // 2. No server key — check localStorage for user-provided key
+      const storedKey = localStorage.getItem('user_gemini_api_key');
+      if (storedKey) {
+        setApiKeyState(storedKey);
+      }
+      setIsUsingServerKey(false);
+      setIsLoading(false);
+    };
+
+    init();
+  }, []);
+
+  const setApiKey = (key: string) => {
+    if (!key.trim()) return;
+    setApiKeyState(key);
+    setIsUsingServerKey(false);
+    localStorage.setItem('user_gemini_api_key', key);
+  };
+
+  const removeApiKey = () => {
+    setApiKeyState(null);
+    setIsUsingServerKey(false);
+    localStorage.removeItem('user_gemini_api_key');
+  };
+
+  return (
+    <ApiKeyContext.Provider value={{
+      apiKey,
+      setApiKey,
+      removeApiKey,
+      isUsingServerKey,
+      isConfigured: !!apiKey,
+      isLoading,
+    }}>
+      {children}
+    </ApiKeyContext.Provider>
+  );
+};
+
+export const useApiKey = () => {
+  const context = useContext(ApiKeyContext);
+  if (context === undefined) {
+    throw new Error('useApiKey must be used within an ApiKeyProvider');
+  }
+  return context;
+};
+</file>
+
+<file path="services/gemini.ts">
+import { GoogleGenAI } from "@google/genai";
+import { getSystemInstruction } from '../constants';
+import { TargetMedium, AnalysisResult, VisualAsset } from '../types';
+
+const SERVER_KEY_SENTINEL = '__server__';
+
+// ──────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      resolve(base64String.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function urlToBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      resolve(base64String.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function cleanJsonString(text: string): string {
+  let cleaned = text.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+  return cleaned;
+}
+
+// ──────────────────────────────────────────────
+// Analyze Image
+// ──────────────────────────────────────────────
+
+export const analyzeImage = async (
+  assets: VisualAsset[],
+  medium: TargetMedium,
+  apiKey: string | null
+): Promise<AnalysisResult> => {
+
+  if (assets.length === 0) {
+    throw new Error("未提供圖片素材，請先上傳圖片。");
+  }
+
+  // Build parts (base64 images) — needed for both proxy and direct calls
+  const parts: any[] = [];
+
+  for (const asset of assets) {
+    try {
+      if (asset.type === 'file' && asset.file) {
+        const base64Data = await fileToBase64(asset.file);
+        parts.push({ inlineData: { mimeType: asset.file.type, data: base64Data } });
+      } else if (asset.type === 'url' && asset.url) {
+        try {
+          const base64Data = await urlToBase64(asset.url);
+          parts.push({ inlineData: { mimeType: 'image/jpeg', data: base64Data } });
+        } catch {
+          console.warn(`CORS blocked: ${asset.url} — sending as URL text instead`);
+          parts.push({ text: `[Image URL Source]: ${asset.url}` });
+        }
+      }
+    } catch (e) {
+      console.error("Error processing asset", asset, e);
+    }
+  }
+
+  const promptText = `
+    Analyze the attached visual assets (Moodboard).
+    Target Medium: ${medium}
+    
+    Output valid JSON containing the summary, the image_generation_prompt, and the YAML specification.
+    Ensure the 'yaml_spec' strictly follows the schema defined for ${medium}.
+  `;
+  parts.push({ text: promptText });
+
+  const systemInstruction = getSystemInstruction(medium);
+
+  const parseResponse = (responseText: string): AnalysisResult => {
+    const cleaned = cleanJsonString(responseText);
+    const parsedData = JSON.parse(cleaned);
+    return {
+      yaml: parsedData.yaml_spec || "# 錯誤: AI 未能生成 YAML 欄位",
+      summary: parsedData.summary || {
+        mood_keywords: [],
+        primary_colors: [],
+        style_description: "無法取得摘要。"
+      },
+      image_generation_prompt: parsedData.image_generation_prompt || "Abstract geometric composition.",
+      source_medium: medium
+    };
+  };
+
+  // ── Path A: Use server-side proxy ──
+  if (apiKey === SERVER_KEY_SENTINEL) {
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parts, systemInstruction, medium }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: '伺服器錯誤' }));
+      throw new Error(err.error || '分析失敗');
+    }
+
+    const { text } = await res.json();
+    try {
+      return parseResponse(text);
+    } catch {
+      throw new Error("解析失敗：AI 回傳的格式並非有效的 JSON，請重試。");
+    }
+  }
+
+  // ── Path B: BYOK — call Gemini directly ──
+  if (!apiKey) {
+    throw new Error("缺少 API Key，請在設定中配置您的金鑰。");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-preview-04-17',
+      contents: { parts },
+      config: {
+        systemInstruction,
+        temperature: 0.4,
+        responseMimeType: "application/json",
+      }
+    });
+
+    const responseText = response.text;
+    if (!responseText) throw new Error("AI 回應為空，請稍後再試。");
+
+    try {
+      return parseResponse(responseText);
+    } catch {
+      throw new Error("解析失敗：AI 回傳的格式並非有效的 JSON，請重試。");
+    }
+  } catch (error: any) {
+    let msg = "分析失敗，請檢查您的 API Key 或稍後再試。";
+    if (error.message?.includes("API_KEY")) msg = "API Key 無效或過期，請檢查設定。";
+    if (error.message?.includes("429")) msg = "請求過於頻繁 (Rate Limit)，請稍候再試。";
+    throw new Error(msg);
+  }
+};
+
+// ──────────────────────────────────────────────
+// Generate Visual Preview
+// ──────────────────────────────────────────────
+
+export const generateVisualPreview = async (
+  prompt: string,
+  medium: TargetMedium,
+  apiKey: string | null
+): Promise<string> => {
+
+  let aspectRatio = "1:1";
+  let enhancedPrompt = prompt;
+
+  switch (medium) {
+    case TargetMedium.SLIDES:
+      aspectRatio = "16:9";
+      enhancedPrompt = `Presentation Slide Design, Corporate Deck Layout, Wide shot, High Resolution :: ${prompt}`;
+      break;
+    case TargetMedium.SAAS:
+      aspectRatio = "16:9";
+      enhancedPrompt = `Modern Desktop Web Application UI, Dashboard Interface, High Fidelity, User Experience Design, Clean Lines :: ${prompt}`;
+      break;
+    case TargetMedium.POSTER:
+      aspectRatio = "3:4";
+      enhancedPrompt = `Vertical Poster Art, Graphic Design Key Visual, Typography Layout, Print Design quality :: ${prompt}`;
+      break;
+  }
+
+  // ── Path A: Use server-side proxy ──
+  if (apiKey === SERVER_KEY_SENTINEL) {
+    const res = await fetch('/api/generate-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: enhancedPrompt, aspectRatio }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: '伺服器錯誤' }));
+      throw new Error(err.error || '圖片生成失敗');
+    }
+
+    const { image } = await res.json();
+    return image;
+  }
+
+  // ── Path B: BYOK — call Gemini directly ──
+  if (!apiKey) {
+    throw new Error("缺少 API Key，請在設定中配置。");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  const extractImage = (response: any): string | null => {
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    return null;
+  };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: { parts: [{ text: enhancedPrompt }] },
+      config: { imageConfig: { aspectRatio, imageSize: "1K" } },
+    });
+    const img = extractImage(response);
+    if (img) return img;
+    throw new Error("Pro 模型未回傳圖片。");
+  } catch (proErr: any) {
+    console.warn("Pro image failed, trying Flash:", proErr);
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts: [{ text: enhancedPrompt }] },
+        config: { imageConfig: { aspectRatio } },
+      });
+      const img = extractImage(response);
+      if (img) return img;
+      throw new Error("Flash 模型未回傳圖片。");
+    } catch (flashErr: any) {
+      let msg = "圖片生成失敗。";
+      if (proErr.message?.includes("403") || proErr.message?.includes("PERMISSION")) {
+        msg += " (API Key 可能不支援圖片生成模型)";
+      } else {
+        msg += ` ${flashErr.message}`;
+      }
+      throw new Error(msg);
+    }
+  }
+};
+</file>
+
+<file path=".gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+</file>
+
+<file path="App.tsx">
+import React, { useState } from 'react';
+import { Header } from './components/Header';
+import { AssetUploader } from './components/AssetUploader';
+import { MediumSelector } from './components/MediumSelector';
+import { ResultViewer } from './components/ResultViewer';
+import { analyzeImage } from './services/gemini';
+import { AnalysisState, TargetMedium, VisualAsset } from './types';
+import { ApiKeyProvider, useApiKey } from './contexts/ApiKeyContext';
+import { ApiKeyModal } from './components/ApiKeyModal';
+import { ArrowRight, Sparkles } from 'lucide-react';
+
+const AppContent: React.FC = () => {
+  const { apiKey, isConfigured, isLoading } = useApiKey();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const [assets, setAssets] = useState<VisualAsset[]>([]);
+  const [medium, setMedium] = useState<TargetMedium>(TargetMedium.SLIDES);
+  const [analysisState, setAnalysisState] = useState<AnalysisState>({
+    isLoading: false,
+    result: null,
+    error: null,
+  });
+
+  const handleAnalyze = async () => {
+    if (assets.length === 0) return;
+    if (!apiKey) {
+      setIsSettingsOpen(true);
+      return;
+    }
+
+    setAnalysisState({ isLoading: true, result: null, error: null });
+
+    try {
+      const yamlResult = await analyzeImage(assets, medium, apiKey);
+      setAnalysisState({ isLoading: false, result: yamlResult, error: null });
+    } catch (err: any) {
+      setAnalysisState({
+        isLoading: false,
+        result: null,
+        error: err.message || "Unknown error occurred"
+      });
+    }
+  };
+
+  const handleReset = () => {
+    setAssets([]);
+    setAnalysisState({ isLoading: false, result: null, error: null });
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-zinc-100 text-zinc-900 font-sans selection:bg-sky-100 selection:text-sky-900">
+      <Header onOpenSettings={() => setIsSettingsOpen(true)} />
+
+      <ApiKeyModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        forceOpen={!isLoading && !isConfigured}
+      />
+
+      <main className="flex-1 w-full max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-12 gap-12">
+
+        {/* Left Column: Input Panel */}
+        <section className="lg:col-span-5 flex flex-col gap-8">
+          <div className="sticky top-24">
+            <div className="mb-6 pl-1">
+              <h2 className="text-2xl font-bold text-zinc-800 tracking-tight mb-2">
+                輸入參數 (Input)
+              </h2>
+              <p className="text-sm text-zinc-500 font-medium">
+                設定您的視覺來源與目標格式。
+              </p>
+            </div>
+
+            {/* Stronger Block Container */}
+            <div className="bg-white rounded-xl border-2 border-zinc-200 shadow-lg shadow-zinc-200/50 p-6 space-y-8">
+              <AssetUploader
+                assets={assets}
+                onAssetsChange={setAssets}
+                onReset={handleReset}
+              />
+
+              <div className="w-full h-px bg-zinc-100"></div>
+
+              <MediumSelector
+                selectedMedium={medium}
+                onSelect={setMedium}
+              />
+
+              <div className="pt-4">
+                <button
+                  onClick={handleAnalyze}
+                  disabled={assets.length === 0 || analysisState.isLoading}
+                  className={`
+                     w-full py-4 px-6 font-bold text-base rounded-xl transition-all duration-200
+                     flex items-center justify-center gap-3 shadow-md
+                     ${assets.length === 0 || analysisState.isLoading
+                      ? 'bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed shadow-none'
+                      : 'bg-sky-600 text-white border border-sky-700 hover:bg-sky-700 hover:shadow-sky-500/25 transform active:scale-[0.98]'}
+                   `}
+                >
+                  {analysisState.isLoading ? (
+                    <>
+                      <Sparkles size={20} className="animate-spin" />
+                      <span>正在解析風格...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>開始風格分析</span>
+                      <ArrowRight size={20} />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Right Column: Output Panel */}
+        <section className="lg:col-span-7 pt-2">
+          <div className="mb-6 pl-1 lg:hidden">
+            <h2 className="text-2xl font-bold text-zinc-800 tracking-tight">
+              輸出結果 (Output)
+            </h2>
+          </div>
+          <ResultViewer state={analysisState} medium={medium} onReAnalyze={handleAnalyze} />
+        </section>
+
+      </main>
+    </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <ApiKeyProvider>
+      <AppContent />
+    </ApiKeyProvider>
+  );
+};
+
+export default App;
+</file>
+
+<file path="constants.ts">
+import { TargetMedium } from './types';
+
+export const MEDIUM_DESCRIPTIONS: Record<TargetMedium, string> = {
+  [TargetMedium.SLIDES]: "針對簡報提案 (NotebookLM Workflow)",
+  [TargetMedium.SAAS]: "定義 App Shell、UI 狀態與 Design Tokens",
+  [TargetMedium.POSTER]: "針對海報與主視覺 (Aesthetic Impact)",
+};
+
+interface BestPractice {
+  title: string;
+  goldenRatio: string;
+  recipe: string[];
+  donts: string;
+}
+
+export const MEDIUM_BEST_PRACTICES: Record<TargetMedium, BestPractice> = {
+  [TargetMedium.SLIDES]: {
+    title: "簡報提案 (Slides) 最佳實踐",
+    goldenRatio: "建議張數：3 張 (黃金比例)",
+    recipe: [
+      "1 張 封面主視覺 (定義標題風格與主色調)",
+      "1 張 內頁版型 (定義圖文排版與留白邏輯)",
+      "1 張 數據圖表 (定義 Chart Sequence 配色)"
+    ],
+    donts: "請勿混用風格差異過大的圖片 (如極簡風混搭賽博龐克)，這會導致排版邏輯混亂。"
+  },
+  [TargetMedium.SAAS]: {
+    title: "SaaS / SPA 最佳實踐",
+    goldenRatio: "建議張數：3-4 張",
+    recipe: [
+      "1 張 全景結構圖 (Dashboard/Landing，定義 App Shell)",
+      "1 張 元件細節 (按鈕、表單，定義 UI States)",
+      "1 張 品牌氛圍圖 (不一定是介面，用於提取正確色票)"
+    ],
+    donts: "若要製作 Dark Mode，請確保 3 張圖皆為深色系，切勿深淺混搭。"
+  },
+  [TargetMedium.POSTER]: {
+    title: "海報視覺 (Poster) 最佳實踐",
+    goldenRatio: "建議張數：1-2 張",
+    recipe: [
+      "1 張 構圖參考 (定義佈局張力)",
+      "1 張 紋理參考 (定義紙質或雜訊細節)"
+    ],
+    donts: "避免上傳充滿純文字的圖片，AI 需要的是視覺構成而非文字內容。"
+  }
+};
+
+const BASE_INSTRUCTION_PREFIX = `
+## Role & Objective
+You are the **Visual Spec Architect**. Your mission is to analyze visual inputs and translate their "Visual DNA" into a structured, production-ready **YAML Design Specification**.
+
+## Output Format - CRITICAL
+You **MUST** return a single valid JSON object. 
+- **DO NOT** use Markdown code blocks.
+- The JSON structure must be exactly as follows:
+
+{
+  "summary": {
+    "mood_keywords": ["English (繁體中文)", "English (繁體中文)", "English (繁體中文)"],
+    "primary_colors": ["#Hex1", "#Hex2", "#Hex3", "#Hex4", "#Hex5"],
+    "style_description": "A concise, 2-sentence description of the visual style in Traditional Chinese (繁體中文)."
+  },
+  "image_generation_prompt": "A descriptive English prompt tailored to the specific medium. DO NOT include technical parameter suffixes like '--ar' or '--v'.",
+  "yaml_spec": "THE_FULL_YAML_STRING_HERE"
+}
+
+## Operational Workflow
+1. Analyze the uploaded images.
+2. Extract the visual style.
+3. Generate the summary. **Important**: 'mood_keywords' MUST be in the format 'English Term (繁體中文)', e.g., 'Minimalist (極簡主義)'.
+4. Generate the YAML Spec strictly following the schema below based on the user's selected medium.
+`;
+
+const SLIDES_SCHEMA = `
+## YAML Schema for SLIDES (Presentation)
+Generate the 'yaml_spec' string using this structure. Values should be in English or Traditional Chinese where appropriate:
+
+design_specification:
+  meta:
+    target_medium: "Slides / Presentation"
+    visual_theme: "Name of the theme (e.g., Corporate Clean)"
+  
+  # [Color Palette for Screens]
+  color_scheme:
+    backgrounds: { primary: "#...", secondary: "#..." }
+    text: { title: "#...", body: "#..." }
+    accents: ["#...", "#..."]
+    chart_sequence: ["#Data1", "#Data2", "#Data3", "#Data4"]
+
+  # [Typography & Readability]
+  typography:
+    font_pairing: { heading: "...", body: "..." }
+    readability_rules: "Rules for contrast and font sizes..."
+
+  # [Master Slide Layouts]
+  layout_templates:
+    title_slide:
+      composition: "Center/Left-align rules..."
+      visual_element: "Description of hero graphic..."
+    content_slide:
+      grid: "2-column / 3-column..."
+      whitespace: "High/Medium/Low..."
+    divider_slide:
+      style: "Full flood color or Image..."
+`;
+
+const SAAS_SCHEMA = `
+## YAML Schema for SAAS (Web Application)
+Generate the 'yaml_spec' string using this structure. Values should be in English or Traditional Chinese where appropriate:
+
+design_specification:
+  meta:
+    target_medium: "SaaS / Web App"
+    ui_style: "Name of the style (e.g., Modern Dashboard)"
+
+  # [Design Tokens]
+  design_tokens:
+    colors:
+      brand: { primary: "#...", secondary: "#..." }
+      surface: { base: "#...", elevated: "#...", border: "#..." }
+      functional: { success: "#...", warning: "#...", error: "#..." }
+      text: { primary: "#...", secondary: "#...", muted: "#..." }
+    spacing: { base_unit: "4px", scale: "..." }
+    radius: { button: "...", card: "..." }
+
+  # [Component Specifications]
+  components:
+    buttons:
+      solid: "Style description..."
+      outline: "Style description..."
+    cards:
+      shadow: "..."
+      border: "..."
+    inputs:
+      active_state: "..."
+      focus_state: "..."
+
+  # [App Shell & Layout]
+  layout_shell:
+    navigation: "Sidebar / Topbar / Hybrid..."
+    grid_system: "Fluid / Fixed..."
+    z_index_strategy: "Layering rules..."
+`;
+
+const POSTER_SCHEMA = `
+## YAML Schema for POSTER (Key Visual)
+Generate the 'yaml_spec' string using this structure. Values should be in English or Traditional Chinese where appropriate:
+
+design_specification:
+  meta:
+    target_medium: "Poster / Key Visual"
+    artistic_style: "Name of the style (e.g., Swiss Style / Cyberpunk)"
+
+  # [Art Direction]
+  art_direction:
+    mood_keywords: ["English (Chinese)", ...]
+    visual_metaphor: "Description of the core concept..."
+    texture_quality: "Grain / Noise / Clean / Glossy..."
+    lighting_mood: "Soft / Hard / Neon / Natural..."
+
+  # [Composition Guide]
+  composition:
+    balance: "Symmetrical / Asymmetrical..."
+    focal_point: "Center / Rule of Thirds..."
+    typography_treatment: "Experimental / Minimal / Bold..."
+    negative_space: "Usage rules..."
+
+  # [Generative AI Prompting Helper]
+  midjourney_parameters:
+    aspect_ratio: "2:3 (Portrait)"
+    stylize_value: "High / Medium / Low"
+    chaos: "Level of variation..."
+    prompt_structure: "[Subject] + [Style Modifiers] + [Environment] + [Lighting]"
+`;
+
+export const getSystemInstruction = (medium: TargetMedium): string => {
+  let specificSchema = "";
+  
+  switch (medium) {
+    case TargetMedium.SLIDES:
+      specificSchema = SLIDES_SCHEMA;
+      break;
+    case TargetMedium.SAAS:
+      specificSchema = SAAS_SCHEMA;
+      break;
+    case TargetMedium.POSTER:
+      specificSchema = POSTER_SCHEMA;
+      break;
+    default:
+      specificSchema = SAAS_SCHEMA;
+  }
+
+  return `${BASE_INSTRUCTION_PREFIX}\n\n${specificSchema}`;
+};
+</file>
+
+<file path="index.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+</file>
+
+<file path="index.html">
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Visual Construct | 視覺風格解析儀</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+
+      :root {
+        --background: #ffffff;
+        --foreground: #171717;
+      }
+
+      body {
+        font-family: 'Noto Sans TC', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background-color: #FAFAFA;
+        color: var(--foreground);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+    </style>
+    <link rel="stylesheet" href="/index.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="index.tsx">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+</file>
+
+<file path="metadata.json">
+{
+  "name": "Copy of Visual Construct (視覺風格解析儀) 0218",
+  "description": "An interactive tool that translates visual inputs into structured YAML design specifications using Gemini 3.",
+  "requestFramePermissions": []
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "visual-construct",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "^1.3.0",
+    "@vercel/node": "^5.0.0",
+    "lucide-react": "^0.344.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  }
+}
+</file>
+
+<file path="postcss.config.js">
+export default {
+    plugins: {
+        tailwindcss: {},
+        autoprefixer: {},
+    },
+}
+</file>
+
+<file path="README.md">
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/drive/1oOMJHXR903hzirGu-LjwpXn4_A9XP6X4
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
+</file>
+
+<file path="tailwind.config.js">
+/** @type {import('tailwindcss').Config} */
+export default {
+    content: [
+        "./index.html",
+        "./*.{js,ts,jsx,tsx}",
+        "./components/**/*.{js,ts,jsx,tsx}",
+        "./contexts/**/*.{js,ts,jsx,tsx}",
+        "./services/**/*.{js,ts,jsx,tsx}",
+    ],
+    theme: { extend: {} },
+    plugins: [],
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "types": [
+      "node"
+    ],
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}
+</file>
+
+<file path="types.ts">
+export enum TargetMedium {
+  SLIDES = 'Slides',
+  SAAS = 'SaaS',
+  POSTER = 'Poster'
+}
+
+export interface AnalysisSummary {
+  mood_keywords: string[];
+  primary_colors: string[];
+  style_description: string;
+}
+
+export interface AnalysisResult {
+  yaml: string;
+  summary: AnalysisSummary;
+  image_generation_prompt: string;
+  source_medium: TargetMedium; // New field to track data origin
+}
+
+export interface AnalysisState {
+  isLoading: boolean;
+  result: AnalysisResult | null;
+  error: string | null;
+}
+
+export interface VisualAsset {
+  id: string;
+  type: 'file' | 'url';
+  file?: File;
+  url?: string;
+  previewUrl: string;
+}
+</file>
+
+<file path="vercel.json">
+{
+    "rewrites": [
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}
+</file>
+
+<file path="vite.config.ts">
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+});
+</file>
+
+</files>

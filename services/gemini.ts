@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { getSystemInstruction } from '../constants';
-import { TargetMedium, AnalysisResult, VisualAsset } from '../types';
+import { TargetMedium, AnalysisResult, VisualAsset, SLIDE_TYPES, SlidePreview } from '../types';
 
 const SERVER_KEY_SENTINEL = '__server__';
 
@@ -168,25 +168,28 @@ export const analyzeImage = async (
 export const generateVisualPreview = async (
   prompt: string,
   medium: TargetMedium,
-  apiKey: string | null
+  apiKey: string | null,
+  options?: { rawPrompt?: string; rawAspectRatio?: string }
 ): Promise<string> => {
 
-  let aspectRatio = "1:1";
-  let enhancedPrompt = prompt;
+  let aspectRatio = options?.rawAspectRatio || "1:1";
+  let enhancedPrompt = options?.rawPrompt || prompt;
 
-  switch (medium) {
-    case TargetMedium.SLIDES:
-      aspectRatio = "16:9";
-      enhancedPrompt = `Presentation Slide Design, Corporate Deck Layout, flat UI screenshot, direct interface view, no device frame, no monitor, no laptop, no desk, no realistic background, no mockup scene, High Resolution :: ${prompt}`;
-      break;
-    case TargetMedium.SAAS:
-      aspectRatio = "16:9";
-      enhancedPrompt = `Modern Desktop Web Application UI, Dashboard Interface, flat UI screenshot, direct interface view, no device frame, no monitor, no laptop, no phone, no desk, no realistic background, no mockup scene, High Fidelity, User Experience Design, Clean Lines :: ${prompt}`;
-      break;
-    case TargetMedium.POSTER:
-      aspectRatio = "3:4";
-      enhancedPrompt = `Vertical Poster Art, Graphic Design Key Visual, Typography Layout, Print Design quality :: ${prompt}`;
-      break;
+  if (!options?.rawPrompt) {
+    switch (medium) {
+      case TargetMedium.SLIDES:
+        aspectRatio = "16:9";
+        enhancedPrompt = `Presentation Slide Design, Corporate Deck Layout, flat UI screenshot, direct interface view, no device frame, no monitor, no laptop, no desk, no realistic background, no mockup scene, High Resolution :: ${prompt}`;
+        break;
+      case TargetMedium.SAAS:
+        aspectRatio = "16:9";
+        enhancedPrompt = `Modern Desktop Web Application UI, Dashboard Interface, flat UI screenshot, direct interface view, no device frame, no monitor, no laptop, no phone, no desk, no realistic background, no mockup scene, High Fidelity, User Experience Design, Clean Lines :: ${prompt}`;
+        break;
+      case TargetMedium.POSTER:
+        aspectRatio = "3:4";
+        enhancedPrompt = `Vertical Poster Art, Graphic Design Key Visual, Typography Layout, Print Design quality :: ${prompt}`;
+        break;
+    }
   }
 
   // ── Path A: Use server-side proxy ──
@@ -252,4 +255,32 @@ export const generateVisualPreview = async (
       throw new Error(msg);
     }
   }
+};
+
+// ──────────────────────────────────────────────
+// Generate Multi-Slide Previews (Slides Only)
+// ──────────────────────────────────────────────
+
+export const generateSlidesPreviews = async (
+  basePrompt: string,
+  apiKey: string | null,
+  onSlideReady: (index: number, result: { image?: string; error?: string }) => void
+): Promise<void> => {
+
+  const generateOne = async (index: number, slideType: typeof SLIDE_TYPES[number]) => {
+    const rawPrompt = `${slideType.promptPrefix}, 16:9 widescreen slide, High Resolution :: ${basePrompt}`;
+    try {
+      const image = await generateVisualPreview(basePrompt, TargetMedium.SLIDES, apiKey, {
+        rawPrompt,
+        rawAspectRatio: '16:9',
+      });
+      onSlideReady(index, { image });
+    } catch (err: any) {
+      onSlideReady(index, { error: err.message || '圖片生成失敗' });
+    }
+  };
+
+  await Promise.allSettled(
+    SLIDE_TYPES.map((slideType, index) => generateOne(index, slideType))
+  );
 };
