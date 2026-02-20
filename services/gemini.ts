@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { getSystemInstruction } from '../constants';
-import { TargetMedium, AnalysisResult, VisualAsset, SLIDE_TYPES, SlidePreview } from '../types';
+import { TargetMedium, AnalysisResult, VisualAsset, MEDIUM_PREVIEW_TYPES, PreviewTypeConfig } from '../types';
 
 const SERVER_KEY_SENTINEL = '__server__';
 
@@ -264,29 +264,32 @@ export const generateVisualPreview = async (
 };
 
 // ──────────────────────────────────────────────
-// Generate Multi-Slide Previews (Slides Only)
+// Generate Multi-Type Previews (All Mediums)
 // ──────────────────────────────────────────────
 
-export const generateSlidesPreviews = async (
+export const generateMultiPreviews = async (
   basePrompt: string,
+  medium: TargetMedium,
   apiKey: string | null,
-  onSlideReady: (index: number, result: { image?: string; error?: string }) => void
+  onItemReady: (index: number, result: { image?: string; error?: string }) => void
 ): Promise<void> => {
 
-  const generateOne = async (index: number, slideType: typeof SLIDE_TYPES[number]) => {
-    const rawPrompt = `${slideType.promptPrefix}, 16:9 widescreen slide, High Resolution :: ${basePrompt}`;
+  const previewTypes = MEDIUM_PREVIEW_TYPES[medium];
+
+  const generateOne = async (index: number, config: PreviewTypeConfig) => {
+    const rawPrompt = `${config.promptPrefix}, High Resolution :: ${basePrompt}`;
     try {
-      const image = await generateVisualPreview(basePrompt, TargetMedium.SLIDES, apiKey, {
+      const image = await generateVisualPreview(basePrompt, medium, apiKey, {
         rawPrompt,
-        rawAspectRatio: '16:9',
+        rawAspectRatio: config.aspectRatio,
       });
-      onSlideReady(index, { image });
+      onItemReady(index, { image });
     } catch (err: any) {
-      onSlideReady(index, { error: err.message || '圖片生成失敗' });
+      onItemReady(index, { error: err.message || '圖片生成失敗' });
     }
   };
 
   await Promise.allSettled(
-    SLIDE_TYPES.map((slideType, index) => generateOne(index, slideType))
+    previewTypes.map((config, index) => generateOne(index, config))
   );
 };

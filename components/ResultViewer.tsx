@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { AnalysisState, TargetMedium, SlidePreview, SLIDE_TYPES } from '../types';
-import { generateVisualPreview, generateSlidesPreviews } from '../services/gemini';
+import { AnalysisState, TargetMedium, PreviewItem, MEDIUM_PREVIEW_TYPES } from '../types';
+import { generateVisualPreview, generateMultiPreviews } from '../services/gemini';
 import { useApiKey } from '../contexts/ApiKeyContext';
 import { Copy, Check, Image as ImageIcon, Code, Palette, Zap, Download, ZoomIn, Loader2, AlertTriangle, X, Files, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Type, LayoutGrid } from 'lucide-react';
 
@@ -21,8 +21,8 @@ export const ResultViewer: React.FC<ResultViewerProps> = ({ state, medium, onReA
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
-  // Multi-slide previews (Slides only)
-  const [slidesPreviews, setSlidesPreviews] = useState<SlidePreview[]>([]);
+  // Multi-type previews (all mediums)
+  const [previews, setPreviews] = useState<PreviewItem[]>([]);
 
   const result = state.result;
   const summary = result?.summary;
@@ -85,7 +85,7 @@ Task: Deconstruct the attached 'design_specification' to create a high-fidelity 
     setGeneratedImageUrl(null);
     setImageError(null);
     setIsGeneratingImage(false);
-    setSlidesPreviews([]);
+    setPreviews([]);
   }, [state.result, medium]);
 
   useEffect(() => {
@@ -105,53 +105,37 @@ Task: Deconstruct the attached 'design_specification' to create a high-fidelity 
   const handleGeneratePreview = async () => {
     if (!state.result?.image_generation_prompt) return;
 
-    if (medium === TargetMedium.SLIDES) {
-      // Multi-slide generation
-      const initialPreviews: SlidePreview[] = SLIDE_TYPES.map(st => ({
-        type: st.type,
-        label: st.label,
-        image: null,
-        isLoading: true,
-        error: null,
-      }));
-      setSlidesPreviews(initialPreviews);
-      setIsGeneratingImage(true);
-      setGeneratedImageUrl(null);
-      setImageError(null);
+    const previewTypes = MEDIUM_PREVIEW_TYPES[medium];
+    const initialPreviews: PreviewItem[] = previewTypes.map(pt => ({
+      type: pt.type,
+      label: pt.label,
+      image: null,
+      isLoading: true,
+      error: null,
+    }));
+    setPreviews(initialPreviews);
+    setIsGeneratingImage(true);
+    setGeneratedImageUrl(null);
+    setImageError(null);
 
-      await generateSlidesPreviews(
-        state.result.image_generation_prompt,
-        apiKey,
-        (index, result) => {
-          setSlidesPreviews(prev => {
-            const updated = [...prev];
-            updated[index] = {
-              ...updated[index],
-              image: result.image || null,
-              error: result.error || null,
-              isLoading: false,
-            };
-            return updated;
-          });
-        }
-      );
-      setIsGeneratingImage(false);
-    } else {
-      // Single image generation (SaaS / Poster)
-      setIsGeneratingImage(true);
-      setGeneratedImageUrl(null);
-      setImageError(null);
-      setSlidesPreviews([]);
-
-      try {
-        const imageUrl = await generateVisualPreview(state.result.image_generation_prompt, medium, apiKey);
-        setGeneratedImageUrl(imageUrl);
-      } catch (error: any) {
-        setImageError(error.message || "Failed to generate image.");
-      } finally {
-        setIsGeneratingImage(false);
+    await generateMultiPreviews(
+      state.result.image_generation_prompt,
+      medium,
+      apiKey,
+      (index, result) => {
+        setPreviews(prev => {
+          const updated = [...prev];
+          updated[index] = {
+            ...updated[index],
+            image: result.image || null,
+            error: result.error || null,
+            isLoading: false,
+          };
+          return updated;
+        });
       }
-    }
+    );
+    setIsGeneratingImage(false);
   };
 
   if (state.isLoading) {
@@ -476,120 +460,85 @@ Task: Deconstruct the attached 'design_specification' to create a high-fidelity 
             >
               {isGeneratingImage ? <Loader2 className="animate-spin w-5 h-5" /> : <Zap className="w-5 h-5 text-sky-400 fill-sky-400" />}
               {isGeneratingImage
-                ? (medium === TargetMedium.SLIDES ? '正在繪製 4 種投影片版型...' : '正在繪製預覽圖...')
-                : (medium === TargetMedium.SLIDES ? '生成 4 種投影片版型預覽' : '生成 AI 預覽圖')}
+                ? `正在繪製 ${MEDIUM_PREVIEW_TYPES[medium].length} 種預覽圖...`
+                : `生成 ${MEDIUM_PREVIEW_TYPES[medium].length} 種${medium === TargetMedium.SLIDES ? '投影片版型' : medium === TargetMedium.SAAS ? '頁面類型' : '尺寸變體'}預覽`}
             </button>
           </div>
 
-          {/* ── Slides: 2×2 Grid Preview ── */}
-          {medium === TargetMedium.SLIDES && slidesPreviews.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {slidesPreviews.map((slide, idx) => (
-                <div key={slide.type} className="flex flex-col gap-2">
-                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide px-1">{slide.label}</span>
-                  <div className="relative rounded-xl overflow-hidden border-2 border-zinc-200 bg-zinc-100 flex items-center justify-center shadow-inner aspect-video">
-                    {slide.isLoading && (
-                      <div className="text-center">
-                        <Loader2 className="w-8 h-8 text-zinc-400 animate-spin mx-auto mb-2" />
-                        <span className="text-xs text-zinc-500 font-semibold">AI 算圖中...</span>
-                      </div>
-                    )}
-                    {slide.error && (
-                      <div className="p-4 text-center text-red-500 text-xs bg-red-50 w-full h-full flex flex-col items-center justify-center">
-                        <AlertTriangle className="w-6 h-6 mb-2 opacity-50" />
-                        {slide.error}
-                      </div>
-                    )}
-                    {slide.image && (
-                      <div className="absolute inset-0 group/slide">
-                        <img src={slide.image} className="w-full h-full object-contain bg-zinc-900/5" alt={slide.label} />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slide:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
-                          <button
-                            onClick={() => { setLightboxIndex(idx); setIsLightboxOpen(true); }}
-                            className="p-2.5 bg-white text-zinc-900 rounded-full shadow-lg hover:scale-110 transition-transform"
-                          >
-                            <ZoomIn size={16} />
-                          </button>
-                          <a
-                            href={slide.image}
-                            download={`slide-${slide.type}.png`}
-                            className="p-2.5 bg-white text-zinc-900 rounded-full shadow-lg hover:scale-110 transition-transform"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Download size={16} />
-                          </a>
+          {/* ── Multi-Preview Grid (All Mediums) ── */}
+          {previews.length > 0 && (() => {
+            const previewConfigs = MEDIUM_PREVIEW_TYPES[medium];
+            const isPoster = medium === TargetMedium.POSTER;
+
+            const getAspectClass = (aspectRatio: string) => {
+              switch (aspectRatio) {
+                case '16:9': return 'aspect-video';
+                case '2:3': return 'aspect-[2/3]';
+                case '3:4': return 'aspect-[3/4]';
+                case '9:16': return 'aspect-[9/16]';
+                case '1:1': return 'aspect-square';
+                default: return 'aspect-video';
+              }
+            };
+
+            return (
+              <div className={isPoster ? 'grid grid-cols-2 md:grid-cols-4 gap-4' : 'grid grid-cols-1 md:grid-cols-2 gap-4'}>
+                {previews.map((item, idx) => (
+                  <div key={item.type} className="flex flex-col gap-2">
+                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide px-1">{item.label}</span>
+                    <div className={`relative rounded-xl overflow-hidden border-2 border-zinc-200 bg-zinc-100 flex items-center justify-center shadow-inner ${getAspectClass(previewConfigs[idx]?.aspectRatio || '16:9')}`}>
+                      {item.isLoading && (
+                        <div className="text-center">
+                          <Loader2 className="w-8 h-8 text-zinc-400 animate-spin mx-auto mb-2" />
+                          <span className="text-xs text-zinc-500 font-semibold">AI 算圖中...</span>
                         </div>
-                      </div>
-                    )}
-                    {!slide.image && !slide.isLoading && !slide.error && (
-                      <div className="text-center text-zinc-400">
-                        <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                      </div>
-                    )}
+                      )}
+                      {item.error && (
+                        <div className="p-4 text-center text-red-500 text-xs bg-red-50 w-full h-full flex flex-col items-center justify-center">
+                          <AlertTriangle className="w-6 h-6 mb-2 opacity-50" />
+                          {item.error}
+                        </div>
+                      )}
+                      {item.image && (
+                        <div className="absolute inset-0 group/preview">
+                          <img src={item.image} className="w-full h-full object-contain bg-zinc-900/5" alt={item.label} />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
+                            <button
+                              onClick={() => { setLightboxIndex(idx); setIsLightboxOpen(true); }}
+                              className="p-2.5 bg-white text-zinc-900 rounded-full shadow-lg hover:scale-110 transition-transform"
+                            >
+                              <ZoomIn size={16} />
+                            </button>
+                            <a
+                              href={item.image}
+                              download={`${medium.toLowerCase()}-${item.type}.png`}
+                              className="p-2.5 bg-white text-zinc-900 rounded-full shadow-lg hover:scale-110 transition-transform"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Download size={16} />
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                      {!item.image && !item.isLoading && !item.error && (
+                        <div className="text-center text-zinc-400">
+                          <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── Non-Slides: Single Image Preview ── */}
-          {medium !== TargetMedium.SLIDES && (
-            <div className={`
-                 relative rounded-xl overflow-hidden border-2 border-zinc-200 bg-zinc-100 flex items-center justify-center shadow-inner w-full
-                 ${medium === TargetMedium.POSTER ? 'aspect-[3/4] md:aspect-video lg:aspect-[16/9]' : 'aspect-video'}
-               `}>
-              {!generatedImageUrl && !isGeneratingImage && (
-                <div className="text-center text-zinc-400">
-                  <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                  <span className="text-sm font-semibold">預覽區域</span>
-                </div>
-              )}
-
-              {isGeneratingImage && (
-                <div className="text-center">
-                  <Loader2 className="w-10 h-10 text-zinc-400 animate-spin mx-auto mb-3" />
-                  <span className="text-sm text-zinc-500 font-semibold">AI 算圖中...</span>
-                </div>
-              )}
-
-              {imageError && (
-                <div className="p-8 text-center text-red-500 text-sm bg-red-50 w-full h-full flex flex-col items-center justify-center">
-                  <AlertTriangle className="w-8 h-8 mb-3 opacity-50" />
-                  {imageError}
-                </div>
-              )}
-
-              {generatedImageUrl && (
-                <div className="absolute inset-0 group">
-                  <img src={generatedImageUrl} className="w-full h-full object-contain bg-zinc-900/5" alt="Generated" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 backdrop-blur-[2px]">
-                    <button
-                      onClick={() => { setLightboxIndex(0); setIsLightboxOpen(true); }}
-                      className="p-3 bg-white text-zinc-900 rounded-full shadow-lg hover:scale-110 transition-transform"
-                    >
-                      <ZoomIn size={20} />
-                    </button>
-                    <a
-                      href={generatedImageUrl}
-                      download="visual-spec.png"
-                      className="p-3 bg-white text-zinc-900 rounded-full shadow-lg hover:scale-110 transition-transform"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Download size={20} />
-                    </a>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
       {/* Lightbox */}
       {isLightboxOpen && (() => {
-        const lightboxImages = medium === TargetMedium.SLIDES
-          ? slidesPreviews.filter(s => s.image).map(s => ({ url: s.image!, label: s.label }))
-          : generatedImageUrl ? [{ url: generatedImageUrl, label: 'Preview' }] : [];
+        const lightboxImages = previews
+          .filter(p => p.image)
+          .map(p => ({ url: p.image!, label: p.label }));
 
         if (lightboxImages.length === 0) return null;
 
