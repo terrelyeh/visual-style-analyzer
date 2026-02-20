@@ -61,6 +61,16 @@ You **MUST** return a single valid JSON object.
     "style_description": "A concise, 2-sentence description of the visual style in Traditional Chinese (繁體中文)."
   },
   "image_generation_prompt": "A descriptive English prompt for generating a preview image. Follow these rules based on target medium:\n    - For SAAS / Web App / Slides: Generate a prompt for a FLAT UI SCREENSHOT ONLY. Show the interface design directly — NO device frames, NO monitors, NO laptops, NO phones, NO desks, NO realistic backgrounds, NO mockup scenes. Just the pure UI on a plain or subtle gradient background.\n    - For Poster / Key Visual: Generate a prompt for an artistic composition that can include environmental context and creative framing.\n    DO NOT include technical parameter suffixes like '--ar' or '--v'.",
+  "style_guide_summary": {
+    "design_characteristics": ["用繁體中文描述 3-5 個該風格的核心設計特徵，例如：大量留白搭配幾何色塊、圓角卡片加柔和陰影"],
+    "typography": {
+      "heading": "建議的標題字體名稱 (e.g. Inter Bold)",
+      "body": "建議的內文字體名稱 (e.g. Noto Sans TC Regular)",
+      "rationale": "用繁體中文解釋為什麼選這組字體配對"
+    },
+    "layout_logic": ["用繁體中文描述 2-3 個版面邏輯重點，例如：採用 8px 基準單位、高留白密度、左對齊為主"],
+    "cautions": ["用繁體中文描述 2-3 個使用此風格時的注意事項，例如：避免超過 3 種強調色"]
+  },
   "yaml_spec": "THE_FULL_YAML_STRING_HERE"
 }
 
@@ -68,7 +78,8 @@ You **MUST** return a single valid JSON object.
 1. Analyze the uploaded images.
 2. Extract the visual style.
 3. Generate the summary. **Important**: 'mood_keywords' MUST be in the format 'English Term (繁體中文)', e.g., 'Minimalist (極簡主義)'.
-4. Generate the YAML Spec strictly following the schema below based on the user's selected medium.
+4. Generate the style_guide_summary in Traditional Chinese (繁體中文) — this is a human-readable quick reference of the design decisions.
+5. Generate the YAML Spec strictly following the schema below based on the user's selected medium.
 `;
 
 const SLIDES_SCHEMA = `

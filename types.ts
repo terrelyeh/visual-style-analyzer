@@ -14,7 +14,19 @@ export interface AnalysisResult {
   yaml: string;
   summary: AnalysisSummary;
   image_generation_prompt: string;
-  source_medium: TargetMedium; // New field to track data origin
+  source_medium: TargetMedium;
+  style_guide: StyleGuideSummary;
+}
+
+export interface StyleGuideSummary {
+  design_characteristics: string[];
+  typography: {
+    heading: string;
+    body: string;
+    rationale: string;
+  };
+  layout_logic: string[];
+  cautions: string[];
 }
 
 export interface AnalysisState {

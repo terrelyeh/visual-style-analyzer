@@ -102,6 +102,12 @@ export const analyzeImage = async (
         style_description: "無法取得摘要。"
       },
       image_generation_prompt: parsedData.image_generation_prompt || "Abstract geometric composition.",
+      style_guide: parsedData.style_guide_summary || {
+        design_characteristics: [],
+        typography: { heading: '', body: '', rationale: '' },
+        layout_logic: [],
+        cautions: [],
+      },
       source_medium: medium
     };
   };

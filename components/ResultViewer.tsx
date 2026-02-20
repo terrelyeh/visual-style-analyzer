@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AnalysisState, TargetMedium, SlidePreview, SLIDE_TYPES } from '../types';
 import { generateVisualPreview, generateSlidesPreviews } from '../services/gemini';
 import { useApiKey } from '../contexts/ApiKeyContext';
-import { Copy, Check, Image as ImageIcon, Code, Palette, Zap, Download, ZoomIn, Loader2, AlertTriangle, X, Files, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Copy, Check, Image as ImageIcon, Code, Palette, Zap, Download, ZoomIn, Loader2, AlertTriangle, X, Files, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Type, LayoutGrid } from 'lucide-react';
 
 interface ResultViewerProps {
   state: AnalysisState;
@@ -343,6 +343,103 @@ Task: Deconstruct the attached 'design_specification' to create a high-fidelity 
           </pre>
         </div>
       </div>
+
+      {/* 3.5 Style Quick Look */}
+      {result.style_guide && result.style_guide.design_characteristics?.length > 0 && (
+        <div className={`bg-white border-2 border-zinc-200 rounded-2xl shadow-lg shadow-zinc-200/50 overflow-hidden group ${isStale ? 'blur-[2px] opacity-50 pointer-events-none' : ''}`}>
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-400 to-orange-500"></div>
+          <div className="px-6 py-5 border-b border-zinc-200 bg-amber-50/30">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 text-amber-700 rounded-lg border border-amber-200">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-800 uppercase tracking-wide">設計風格速覽 (Style Quick Look)</h3>
+                <span className="text-[10px] text-zinc-400 font-bold">YAML Spec 的人類可讀版摘要</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* Design Characteristics */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Palette className="w-4 h-4 text-amber-600" />
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">風格特點</span>
+              </div>
+              <ul className="space-y-2">
+                {result.style_guide.design_characteristics.map((item, idx) => (
+                  <li key={idx} className="flex items-start gap-3 text-sm text-zinc-700 leading-relaxed">
+                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Typography */}
+            {result.style_guide.typography?.heading && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Type className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">字體建議</span>
+                </div>
+                <div className="bg-zinc-50 rounded-xl p-4 border border-zinc-100 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase w-10 shrink-0">標題</span>
+                    <span className="text-sm font-semibold text-zinc-800">{result.style_guide.typography.heading}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase w-10 shrink-0">內文</span>
+                    <span className="text-sm font-semibold text-zinc-800">{result.style_guide.typography.body}</span>
+                  </div>
+                  {result.style_guide.typography.rationale && (
+                    <p className="text-xs text-zinc-500 leading-relaxed pt-2 border-t border-zinc-100 mt-2">
+                      {result.style_guide.typography.rationale}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Layout Logic */}
+            {result.style_guide.layout_logic?.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <LayoutGrid className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">版面邏輯</span>
+                </div>
+                <ul className="space-y-2">
+                  {result.style_guide.layout_logic.map((item, idx) => (
+                    <li key={idx} className="flex items-start gap-3 text-sm text-zinc-700 leading-relaxed">
+                      <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-zinc-300 shrink-0"></span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Cautions */}
+            {result.style_guide.cautions?.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-4 h-4 text-red-400" />
+                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">注意事項</span>
+                </div>
+                <ul className="space-y-2">
+                  {result.style_guide.cautions.map((item, idx) => (
+                    <li key={idx} className="flex items-start gap-3 text-sm text-red-600/80 leading-relaxed">
+                      <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-300 shrink-0"></span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 4. Visual Lab */}
       <div className={`bg-white border-2 border-zinc-200 rounded-2xl shadow-lg shadow-zinc-200/50 p-8 relative overflow-hidden group ${isStale ? 'blur-[2px] opacity-50 pointer-events-none' : ''}`}>
