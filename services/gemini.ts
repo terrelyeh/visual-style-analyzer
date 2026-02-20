@@ -177,11 +177,11 @@ export const generateVisualPreview = async (
   switch (medium) {
     case TargetMedium.SLIDES:
       aspectRatio = "16:9";
-      enhancedPrompt = `Presentation Slide Design, Corporate Deck Layout, Wide shot, High Resolution :: ${prompt}`;
+      enhancedPrompt = `Presentation Slide Design, Corporate Deck Layout, flat UI screenshot, direct interface view, no device frame, no monitor, no laptop, no desk, no realistic background, no mockup scene, High Resolution :: ${prompt}`;
       break;
     case TargetMedium.SAAS:
       aspectRatio = "16:9";
-      enhancedPrompt = `Modern Desktop Web Application UI, Dashboard Interface, High Fidelity, User Experience Design, Clean Lines :: ${prompt}`;
+      enhancedPrompt = `Modern Desktop Web Application UI, Dashboard Interface, flat UI screenshot, direct interface view, no device frame, no monitor, no laptop, no phone, no desk, no realistic background, no mockup scene, High Fidelity, User Experience Design, Clean Lines :: ${prompt}`;
       break;
     case TargetMedium.POSTER:
       aspectRatio = "3:4";

@@ -60,7 +60,7 @@ You **MUST** return a single valid JSON object.
     "primary_colors": ["#Hex1", "#Hex2", "#Hex3", "#Hex4", "#Hex5"],
     "style_description": "A concise, 2-sentence description of the visual style in Traditional Chinese (繁體中文)."
   },
-  "image_generation_prompt": "A descriptive English prompt tailored to the specific medium. DO NOT include technical parameter suffixes like '--ar' or '--v'.",
+  "image_generation_prompt": "A descriptive English prompt for generating a preview image. Follow these rules based on target medium:\n    - For SAAS / Web App / Slides: Generate a prompt for a FLAT UI SCREENSHOT ONLY. Show the interface design directly — NO device frames, NO monitors, NO laptops, NO phones, NO desks, NO realistic backgrounds, NO mockup scenes. Just the pure UI on a plain or subtle gradient background.\n    - For Poster / Key Visual: Generate a prompt for an artistic composition that can include environmental context and creative framing.\n    DO NOT include technical parameter suffixes like '--ar' or '--v'.",
   "yaml_spec": "THE_FULL_YAML_STRING_HERE"
 }
 
@@ -175,7 +175,7 @@ design_specification:
 
 export const getSystemInstruction = (medium: TargetMedium): string => {
   let specificSchema = "";
-  
+
   switch (medium) {
     case TargetMedium.SLIDES:
       specificSchema = SLIDES_SCHEMA;
